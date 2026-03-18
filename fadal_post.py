@@ -107,9 +107,17 @@ PREAMBLE = '''G17 G40 G49 G80 G90
 '''
 
 # Postamble text will appear following the last operation.
+# POSTAMBLE = '''M05
+# G17 G90 G80 G40
+# M2
+# '''
+
 POSTAMBLE = '''M05
-G17 G90 G80 G40
-M2
+G28 G91 Z0.
+G90
+G0
+G53 X0. Y0.
+M30
 '''
 
 # Pre operation text will be inserted before every operation
