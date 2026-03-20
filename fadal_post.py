@@ -38,10 +38,7 @@ import Path.Post.Utils as PostUtils
 import PathScripts.PathUtils as PathUtils
 from PySide import QtGui
 
-## TODO: Verify the order of G43 and fixture offsets to ensure they're applied at the correct time.
-## TODO: Input a program "O" number in the first line of the file, dont include any other characters.
 ## TODO: Fadal 88HS appears to require Windows-style CRLF line endings. Fix this for other OS.
-## TODO: QtGUI likely isnt bundled with FreeCAD and isnt prompting program number in FreeCAD 1.0.2. on Ubuntu.
 
 TOOLTIP = '''
 This is a postprocessor file for the CAM workbench. It is used to
