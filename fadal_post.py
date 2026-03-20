@@ -36,11 +36,12 @@ import shlex
 import os.path
 import Path.Post.Utils as PostUtils
 import PathScripts.PathUtils as PathUtils
+from PySide import QtGui
 
 ## TODO: Verify the order of G43 and fixture offsets to ensure they're applied at the correct time.
 ## TODO: Input a program "O" number in the first line of the file, dont include any other characters.
 ## TODO: Fadal 88HS appears to require Windows-style CRLF line endings. Fix this for other OS.
-## TODO: QTGUI is not prompting for program number in FreeCAD 1.0.2. on Ubuntu.
+## TODO: QtGUI likely isnt bundled with FreeCAD and isnt prompting program number in FreeCAD 1.0.2. on Ubuntu.
 
 TOOLTIP = '''
 This is a postprocessor file for the CAM workbench. It is used to
@@ -94,6 +95,8 @@ OUTPUT_PROGNR = True # add Oxxxx to head of program
 TLC = False # flag for output of G43 Hxx on Z move
 # Adding a CURRENT_TOOL variable to keep track of the current tool number.
 CURRENT_TOOL = 0
+# Store the current fixture offset tag (e.g., E1, G54, etc.) to insert after tool change
+PENDING_FIXTURE_OFFSET = ""
 
 # These globals will be reflected in the Machine configuration of the project
 UNITS = "G20"  # G21 for metric, G20 for us standard
@@ -214,7 +217,7 @@ def export(objectslist, filename, argstring):
             print("the object " + obj.Name + " is not a path. Please select only path and Compounds.")
             return None
 
-    print("postprocessing...")
+    print("Postprocessing...")
     gcode = "%\n" # need % at the beginning of file for Fadal upload
 
     # Output a program number
@@ -223,15 +226,15 @@ def export(objectslist, filename, argstring):
         reply = QtGui.QInputDialog.getText(None,"FadalPost","Enter program number")
         print(f"Reply from OUTPUT_PROGNR: {reply}")
         if reply[1]:
-            gcode += f"%\nO{reply[0]}\n"
+            gcode += f"O{reply[0]}\n"
 
-    # Write header
+    print(f"Write the header.")
     if OUTPUT_HEADER:
-        gcode += f"{os.path.split(filename)[-1]}\n"
+        # gcode += f"{os.path.split(filename)[-1]}\n"
         gcode += f"{linenumber()}(Post Processor: {__name__.upper()})\n"
         gcode += f"{linenumber()}(Process time: {str(now).upper()})\n"
 
-    # Write the preamble
+    print(f"Write the preamble.")
     if OUTPUT_COMMENTS:
         gcode += f"{linenumber()}(Begin Preamble)\n"
     for line in PREAMBLE.splitlines(False):
@@ -240,7 +243,7 @@ def export(objectslist, filename, argstring):
     # Add units G-code
     gcode += f"{linenumber()}{UNITS}\n"
 
-
+    print(f"Iterating over the objectslist.")
     for obj in objectslist:
 
         # Skip inactive operations
@@ -296,7 +299,7 @@ def export(objectslist, filename, argstring):
                 # This mill uses the air brake for mist coolant!
                 gcode += f"{linenumber()}M61\n"
 
-    # Do the post_amble
+    # Do the postamble
     if OUTPUT_COMMENTS:
         gcode += f"(BEGIN POSTAMBLE)\n"
     for line in POSTAMBLE.splitlines(True):
@@ -342,13 +345,14 @@ def parse(pathobj):
     global UNIT_SPEED_FORMAT
     global TLC
     global CURRENT_TOOL
+    global PENDING_FIXTURE_OFFSET
 
     out = ""
     lastcommand = None
     precision_string = f".{PRECISION}f"
     currLocation = {}  # keep track for no doubles
     print(f"parse() startup! TLC is: {TLC}")
-
+    print(f"str of pathobj is {pathobj}")
     # the order of parameters
     params = ['X', 'Y', 'Z', 'A', 'B', 'C', 'I', 'J', 'K', 'F', 'S', 'T', 'Q', 'R', 'L', 'H', 'D', 'P']
     firstmove = Path.Command("G0", {"X": -1, "Y": -1, "Z": -1, "F": 0.0})
@@ -385,11 +389,17 @@ def parse(pathobj):
                 if opHorizRapid and opVertRapid:
                     command = 'G1'
                 else:
-                    outstring.append('(TOOL CONTROLLER RAPID VALUES ARE UNSET)' + '\n')
+                    outstring.append('(TOOL CONTROLLER RAPID VALUES ARE UNSET)\n')
 
-            # suppress moves in fixture selection
+            # Suppress moves in fixture selection
             if pathobj.Label == "Fixture":
                 if command == "G0":
+                    continue
+                # Capture fixture offset commands (e.g., E1, G54, G55, etc.) and store for later
+                if command not in ["G0", "G00"] and not command.startswith("("):
+                    PENDING_FIXTURE_OFFSET = command
+                    # Skip outputting the fixture offset here; it will be added after tool change
+                    lastcommand = command
                     continue
 
             # FIXME
@@ -430,7 +440,7 @@ def parse(pathobj):
                             speed = Units.Quantity(c.Parameters['F'], FreeCAD.Units.Velocity)
                             if speed.getValueAs(UNIT_SPEED_FORMAT) > 0.0:
                                 outstring.append(
-                                    f"{param}{float(speed.getValueAs(UNIT_SPEED_FORMAT)): {precision_string}}")
+                                    f"{param}{float(speed.getValueAs(UNIT_SPEED_FORMAT)):{precision_string}}")
                             else:
                                 continue
                     elif param == 'T':
@@ -445,15 +455,19 @@ def parse(pathobj):
                     else: # coordinates & other parameters
                         if param == 'Z' and TLC: # add G43 Hxx to first Z move
                           # The post from pyDNC added the G43 HXX to the first Z move which resulted in an unintended overtravel of Z.
+                          # If there's a pending fixture offset, insert a G0 line with it before the G43 line
+                          if PENDING_FIXTURE_OFFSET:
+                              out += f"{linenumber()}G0 {PENDING_FIXTURE_OFFSET}\n"
+                              PENDING_FIXTURE_OFFSET = ""
                           pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
                           outstring.append(
-                              f"G43 {param}{float(pos.getValueAs(UNIT_FORMAT)): {precision_string}} H{CURRENT_TOOL}")
+                              f"G43 {param}{float(pos.getValueAs(UNIT_FORMAT)):{precision_string}} H{CURRENT_TOOL}")
                           TLC = False
                         elif (not OUTPUT_DOUBLES) and (param in currLocation) and (currLocation[param] == c.Parameters[param]):
                             continue
                         else:
                             pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                            outstring.append(f"{param}{float(pos.getValueAs(UNIT_FORMAT)): {precision_string}}")
+                            outstring.append(f"{param}{float(pos.getValueAs(UNIT_FORMAT)):{precision_string}}")
 
             # store the latest command
             lastcommand = command
