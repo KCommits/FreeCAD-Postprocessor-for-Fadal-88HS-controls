@@ -39,6 +39,8 @@ import PathScripts.PathUtils as PathUtils
 
 ## TODO: Verify the order of G43 and fixture offsets to ensure they're applied at the correct time.
 ## TODO: Input a program "O" number in the first line of the file, dont include any other characters.
+## TODO: Fadal 88HS appears to require Windows-style CRLF line endings. Fix this for other OS.
+## TODO: QTGUI is not prompting for program number in FreeCAD 1.0.2. on Ubuntu.
 
 TOOLTIP = '''
 This is a postprocessor file for the CAM workbench. It is used to
@@ -88,7 +90,7 @@ OUTPUT_DOUBLES = False  # if false duplicate axis values are suppressed if the s
 COMMAND_SPACE = " "
 LINENR = 100  # line number starting value
 LINEDELTA = 5 # line number increment
-OUTPUT_PROGNR = False # add Oxxxx to head of program
+OUTPUT_PROGNR = True # add Oxxxx to head of program
 TLC = False # flag for output of G43 Hxx on Z move
 # Adding a CURRENT_TOOL variable to keep track of the current tool number.
 CURRENT_TOOL = 0
@@ -213,17 +215,17 @@ def export(objectslist, filename, argstring):
             return None
 
     print("postprocessing...")
-    gcode = "%\n" # need % at beginning of file for Fadal upload
+    gcode = "%\n" # need % at the beginning of file for Fadal upload
 
-    #output a program number
-    #format for nc-file *_xxxx.nc2 whereby xxxx=program number
+    # Output a program number
+    # Format for nc-file *_xxxx.nc2 whereby xxxx=program number
     if OUTPUT_PROGNR == True:
-        reply = QtGui.QInputDialog.getText(None,"FadalPost","Enter programm number")
+        reply = QtGui.QInputDialog.getText(None,"FadalPost","Enter program number")
         print(f"Reply from OUTPUT_PROGNR: {reply}")
         if reply[1]:
-            gcode += "%\nO" + reply[0] + "\n"
+            gcode += f"%\nO{reply[0]}\n"
 
-    # write header
+    # Write header
     if OUTPUT_HEADER:
         gcode += f"{os.path.split(filename)[-1]}\n"
         gcode += f"{linenumber()}(Post Processor: {__name__.upper()})\n"
@@ -233,8 +235,11 @@ def export(objectslist, filename, argstring):
     if OUTPUT_COMMENTS:
         gcode += f"{linenumber()}(Begin Preamble)\n"
     for line in PREAMBLE.splitlines(False):
-        gcode += linenumber() + line + "\n"
-    gcode += linenumber() + UNITS + "\n"
+        gcode += f"{linenumber()}{line}\n"
+
+    # Add units G-code
+    gcode += f"{linenumber()}{UNITS}\n"
+
 
     for obj in objectslist:
 
@@ -246,14 +251,14 @@ def export(objectslist, filename, argstring):
             if not obj.Base.Active:
                 continue
 
-        # do the pre_op
+        # Add pre-op comments
         if OUTPUT_COMMENTS:
-            gcode += linenumber() + "(BEGIN OPERATION: %s)\n" % obj.Label.upper()
-            gcode += linenumber() + "(MACHINE UNITS: %s)\n" % (UNIT_SPEED_FORMAT.upper())
+            gcode += f"{linenumber()}(BEGIN OPERATION: {obj.Label.upper()})\n"
+            # gcode += f"{linenumber()}(MACHINE UNITS: {UNIT_SPEED_FORMAT.upper()})\n"
         for line in PRE_OPERATION.splitlines(True):
-            gcode += linenumber() + line
+            gcode += f"{linenumber()}{line}"
 
-        # get coolant mode
+        # Get coolant mode
         coolantMode = 'None'
         if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and  hasattr(obj.Base, "CoolantMode"):
             if hasattr(obj, "CoolantMode"):
@@ -261,39 +266,41 @@ def export(objectslist, filename, argstring):
             else:
                 coolantMode = obj.Base.CoolantMode
 
-        # turn coolant on if required
+        # Turn coolant on if required
         if OUTPUT_COMMENTS:
             if not coolantMode == 'None':
-                gcode += linenumber() + '(COOLANT ON:' + coolantMode.upper() + ')\n'
+                gcode += f"{linenumber()}(COOLANT ON:{coolantMode.upper()})\n"
         if coolantMode == 'Flood':
-            gcode  += linenumber() + 'M8' + '\n'
-        if coolantMode == 'Mist':       # this mill uses the air brake for mist coolant!
-            gcode += linenumber() + 'M60' + '\n'
-
-        # process the operation gcode
+            gcode += f"{linenumber()}M8\n"
+        if coolantMode == 'Mist':
+            # This mill uses the air brake for mist coolant!
+            gcode += f"{linenumber()}M60\n"
+            
+        # Process the operation gcode
         gcode += parse(obj)
 
-        # do the post_op
+        # Do the post_op
         if OUTPUT_COMMENTS:
-            gcode += linenumber() + "(FINISH OPERATION: %s)\n" % obj.Label.upper()
+            gcode += f"{linenumber()}(FINISH OPERATION: {obj.Label.upper()})\n"
         for line in POST_OPERATION.splitlines(True):
-            gcode += linenumber() + line
+            gcode += f"{linenumber()}{line}"
 
-        # turn coolant off if required
+        # Turn coolant off if required
         if not coolantMode == 'None':
             if OUTPUT_COMMENTS:
-                gcode += linenumber() + '(COOLANT OFF:' + coolantMode.upper() + ')\n'
-            gcode  += linenumber() +'M9' + '\n'
+                gcode += f"{linenumber()}(COOLANT OFF: {coolantMode.upper()})\n"
+            gcode += f"{linenumber()}M9\n"
             if coolantMode == 'Flood':
-                gcode  += linenumber() + 'M9' + '\n'
-            if coolantMode == 'Mist':   # this mill uses the air brake for mist coolant!
-                gcode += linenumber() + 'M61' + '\n'
+                gcode += f"{linenumber()}M9\n"
+            if coolantMode == 'Mist':
+                # This mill uses the air brake for mist coolant!
+                gcode += f"{linenumber()}M61\n"
 
-    # do the post_amble
+    # Do the post_amble
     if OUTPUT_COMMENTS:
-        gcode += "(BEGIN POSTAMBLE)\n"
+        gcode += f"(BEGIN POSTAMBLE)\n"
     for line in POSTAMBLE.splitlines(True):
-        gcode += linenumber() + line
+        gcode += f"{linenumber()}{line}"
     gcode += "%\n"
 
     if FreeCAD.GuiUp and SHOW_EDITOR:
@@ -307,7 +314,7 @@ def export(objectslist, filename, argstring):
     else:
         final = gcode
 
-    print("done postprocessing.")
+    print("Done postprocessing.")
 
     if not filename == '-':
         gfile = pythonopen(filename, "w")
@@ -322,7 +329,7 @@ def linenumber():
     global LINENR
     if OUTPUT_LINE_NUMBERS is True:
         LINENR += LINEDELTA
-        return "N" + str(LINENR) + " "
+        return f'N{str(LINENR)} '
     return ""
 
 
@@ -338,7 +345,7 @@ def parse(pathobj):
 
     out = ""
     lastcommand = None
-    precision_string = '.' + str(PRECISION) + 'f'
+    precision_string = f".{PRECISION}f"
     currLocation = {}  # keep track for no doubles
     print(f"parse() startup! TLC is: {TLC}")
 
@@ -349,7 +356,7 @@ def parse(pathobj):
 
     if hasattr(pathobj, "Group"):  # We have a compound or project.
         # if OUTPUT_COMMENTS:
-        #     out += linenumber() + "(compound: " + pathobj.Label + ")\n"
+        #     out += f"{linenumber()}(compound: {pathobj.Label})\n"
         for p in pathobj.Group:
             out += parse(p)
         return out
@@ -359,12 +366,12 @@ def parse(pathobj):
             return out
 
         # if OUTPUT_COMMENTS:
-        #     out += linenumber() + "(" + pathobj.Label + ")\n"
+        #     out += f"{linenumber()}({pathobj.Label})\n"
 
-        for index,c in enumerate(pathobj.Path.Commands):
+        for index, c in enumerate(pathobj.Path.Commands):
             outstring = []
             command = c.Name
-            if index+1 == len(pathobj.Path.Commands):
+            if index + 1 == len(pathobj.Path.Commands):
               nextcommand = ""
             else:
               nextcommand = pathobj.Path.Commands[index+1].Name
@@ -391,13 +398,13 @@ def parse(pathobj):
                 outstring.append("G84 G99")
                 # append additional parameters for tapping
                 if "R" in c.Parameters:
-                  outstring.append("R0" + str(Units.Quantity(c.Parameters["R"], FreeCAD.Units.Length)))
+                    outstring.append(f"R0{Units.Quantity(c.Parameters['R'], FreeCAD.Units.Length)}")
                 else:
-                  outstring.append("R0" + str(Units.Quantity(currLocation["Z"], FreeCAD.Units.Length)))
-                  # c.Parameters.del("R")
+                    outstring.append(f"R0{Units.Quantity(currLocation['Z'], FreeCAD.Units.Length)}")
+                    # c.Parameters.del("R")
                 if "S" in c.Parameters:
-                  outstring.append("F" + str(int(c.Parameters["S"])))
-                  # c.Parameters.del("S")
+                    outstring.append(f"F{int(c.Parameters['S'])}")
+                    # c.Parameters.del("S")
             else: # otherwise add command to output
                 outstring.append(command)
             # end FIXME
@@ -422,29 +429,31 @@ def parse(pathobj):
                         if command not in ["G0", "G00"]:  # fadal doesn't use rapid speeds
                             speed = Units.Quantity(c.Parameters['F'], FreeCAD.Units.Velocity)
                             if speed.getValueAs(UNIT_SPEED_FORMAT) > 0.0:
-                                outstring.append(param + format(float(speed.getValueAs(UNIT_SPEED_FORMAT)), precision_string))
+                                outstring.append(
+                                    f"{param}{float(speed.getValueAs(UNIT_SPEED_FORMAT)): {precision_string}}")
                             else:
                                 continue
                     elif param == 'T':
-                        outstring.append(param + str(int(c.Parameters['T'])))
+                        outstring.append(f"{param}{int(c.Parameters['T'])}")
                         CURRENT_TOOL = int(c.Parameters['T'])
                     elif param == 'H':
-                        outstring.append(param + str(int(c.Parameters['H'])))
+                        outstring.append(f"{param}{int(c.Parameters['H'])}")
                     elif param == 'D':
-                        outstring.append(param + str(int(c.Parameters['D'])))
+                        outstring.append(f"{param}{int(c.Parameters['D'])}")
                     elif param == 'S':
-                        outstring.append(param + str(int(c.Parameters['S'])))
+                        outstring.append(f"{param}{int(c.Parameters['S'])}")
                     else: # coordinates & other parameters
                         if param == 'Z' and TLC: # add G43 Hxx to first Z move
                           # The post from pyDNC added the G43 HXX to the first Z move which resulted in an unintended overtravel of Z.
                           pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                          outstring.append(f"G43 {param}{format(float(pos.getValueAs(UNIT_FORMAT)), precision_string)} H{CURRENT_TOOL}")
+                          outstring.append(
+                              f"G43 {param}{float(pos.getValueAs(UNIT_FORMAT)): {precision_string}} H{CURRENT_TOOL}")
                           TLC = False
                         elif (not OUTPUT_DOUBLES) and (param in currLocation) and (currLocation[param] == c.Parameters[param]):
                             continue
                         else:
                             pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                            outstring.append(param + format(float(pos.getValueAs(UNIT_FORMAT)), precision_string))
+                            outstring.append(f"{param}{float(pos.getValueAs(UNIT_FORMAT)): {precision_string}}")
 
             # store the latest command
             lastcommand = command
