@@ -3,8 +3,12 @@ This is a FreeCAD CAM Postprocessor for Fadal 88HS controls, it assumes Format 2
 
 This post is still a work in progress, but had made basic pockets and 2D milling work. Test carefully.
 
+# Known Issues
+ - On Linux, python will output LF line endings, but the Fadal seems to choke on them when loading via USB. Use EOL conversion in Notepad++ or similar tools to save the file with Windows style CRLF line endings. 
+
 ## Tested Machine
-- 1997 Fadal VMC4020 with 88HS control. 
+- 1997 Fadal VMC4020 with 88HS control.
+- FreeCAD v1.0.2 on Ubuntu
 
 ## Validated Operations Checklist
 
