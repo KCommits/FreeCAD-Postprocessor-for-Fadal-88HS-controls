@@ -37,6 +37,9 @@ import os.path
 import Path.Post.Utils as PostUtils
 import PathScripts.PathUtils as PathUtils
 
+## TODO: Verify the order of G43 and fixture offsets to ensure they're applied at the correct time.
+## TODO: Input a program "O" number in the first line of the file, dont include any other characters.
+
 TOOLTIP = '''
 This is a postprocessor file for the CAM workbench. It is used to
 take a pseudo-gcode fragment outputted by a Path object, and output
@@ -107,11 +110,6 @@ PREAMBLE = '''G17 G40 G49 G80 G90
 '''
 
 # Postamble text will appear following the last operation.
-# POSTAMBLE = '''M05
-# G17 G90 G80 G40
-# M2
-# '''
-
 POSTAMBLE = '''M05
 G28 G91 Z0.
 G90
@@ -227,8 +225,7 @@ def export(objectslist, filename, argstring):
 
     # write header
     if OUTPUT_HEADER:
-        gcode += f"{os.path.split(filename)[-1]} (FREECAD-FILENAME-GOES-HERE, JOB-NAME-GOES-HERE)\n"
-        gcode += f"{linenumber()}({filename.upper()} exported by FreeCAD)\n"
+        gcode += f"{os.path.split(filename)[-1]}\n"
         gcode += f"{linenumber()}(Post Processor: {__name__.upper()})\n"
         gcode += f"{linenumber()}(Process time: {str(now).upper()})\n"
 
@@ -372,11 +369,10 @@ def parse(pathobj):
             else:
               nextcommand = pathobj.Path.Commands[index+1].Name
 
-            ### adaptiveOp not defined yet, adding below definitions similar to fanuc post -Kyle
+            # adaptiveOp not defined in pyDNC version, adding below definitions similar to fanuc post
             adaptiveOp = False
             opHorizRapid = 0
             opVertRapid = 0
-
 
             if adaptiveOp and c.Name in ["G0", "G00"]:
                 if opHorizRapid and opVertRapid:
@@ -440,17 +436,15 @@ def parse(pathobj):
                         outstring.append(param + str(int(c.Parameters['S'])))
                     else: # coordinates & other parameters
                         if param == 'Z' and TLC: # add G43 Hxx to first Z move
+                          # The post from pyDNC added the G43 HXX to the first Z move which resulted in an unintended overtravel of Z.
                           pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                          outstring.append(
-                              param + format(float(pos.getValueAs(UNIT_FORMAT)), precision_string))
-                          outstring.append(f"G43 H{CURRENT_TOOL}")
+                          outstring.append(f"G43 {param}{format(float(pos.getValueAs(UNIT_FORMAT)), precision_string)} H{CURRENT_TOOL}")
                           TLC = False
                         elif (not OUTPUT_DOUBLES) and (param in currLocation) and (currLocation[param] == c.Parameters[param]):
                             continue
                         else:
                             pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                            outstring.append(
-                                param + format(float(pos.getValueAs(UNIT_FORMAT)), precision_string))
+                            outstring.append(param + format(float(pos.getValueAs(UNIT_FORMAT)), precision_string))
 
             # store the latest command
             lastcommand = command
@@ -476,8 +470,8 @@ def parse(pathobj):
                     outstring.insert(0, (linenumber()))
 
                 # append the line to the final output
-                for w in outstring:
-                    out += w.upper() + COMMAND_SPACE
+                for word in outstring:
+                    out += word.upper() + COMMAND_SPACE
                 out = out.strip() + "\n"
 
         return out
