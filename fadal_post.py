@@ -33,9 +33,8 @@ import Path
 import argparse
 import datetime
 import shlex
-import os.path
 import Path.Post.Utils as PostUtils
-import PathScripts.PathUtils as PathUtils
+
 from PySide import QtGui
 
 ## TODO: Fadal 88HS appears to require Windows-style CRLF line endings. Fix this for other OS.
