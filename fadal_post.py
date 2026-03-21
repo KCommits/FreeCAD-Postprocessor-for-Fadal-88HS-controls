@@ -349,8 +349,9 @@ def parse(pathobj):
     precision_string = f".{PRECISION}f"
     currLocation = {}  # keep track for no doubles
     print(f"parse() startup! TLC is: {TLC}")
-    print(f"str of pathobj is {pathobj}")
-    # the order of parameters
+    # print(f"str of pathobj is {pathobj}")
+
+    # The order of parameters
     params = ['X', 'Y', 'Z', 'A', 'B', 'C', 'I', 'J', 'K', 'F', 'S', 'T', 'Q', 'R', 'L', 'H', 'D', 'P']
     firstmove = Path.Command("G0", {"X": -1, "Y": -1, "Z": -1, "F": 0.0})
     currLocation.update(firstmove.Parameters)  # set First location Parameters
@@ -399,9 +400,21 @@ def parse(pathobj):
                     lastcommand = command
                     continue
 
-            # FIXME
-            # convert drill cycles to tap cycles if tool is a tap
-            if command == "G81" or command == "G83" and hasattr(pathobj, 'ToolController') and pathobj.ToolController.Tool.ToolType == "Tap":
+            # TODO: Drill cycles do not work with pyDNC version of this post and FreeCAD v1.0.2, the attribs checked
+            #  in that version dont exist. I'm attempting a rewrite but havent tested it with tapping at all. I have
+            #  only tested it with peck drill cycles.
+            is_tap = False
+            # Evaluate whether the tool is a tap.
+            if hasattr(pathobj, 'ToolController') and hasattr(pathobj.ToolController, 'Tool'):
+                tool = pathobj.ToolController.Tool
+                if hasattr(tool, 'ToolType'):
+                    is_tap = tool.ToolType == "Tap"
+                elif hasattr(tool, 'ShapeName'):
+                    is_tap = tool.ShapeName == "tap"
+                elif hasattr(tool, 'BitShape'):
+                    is_tap = "tap" in tool.BitShape.lower()
+            # Do the conversion for tapping if needed.
+            if (command == "G81" or command == "G83") and is_tap:
                 outstring.append("G84 G99")
                 # append additional parameters for tapping
                 if "R" in c.Parameters:
@@ -414,7 +427,7 @@ def parse(pathobj):
                     # c.Parameters.del("S")
             else: # otherwise add command to output
                 outstring.append(command)
-            # end FIXME
+            ### End sketchy untested tapping code ###
 
             # if modal: suppress the command if it is the same as the last one
             if MODAL is True:
@@ -431,7 +444,7 @@ def parse(pathobj):
             # Now add the remaining parameters in order
             for param in params:
                 if param in c.Parameters:
-                    print(f"Current param in c.Parameters: {param}")
+                    # print(f"Current param in c.Parameters: {param}")
                     if param == 'F' and (currLocation[param] != c.Parameters[param] or OUTPUT_DOUBLES):
                         if command not in ["G0", "G00"]:  # fadal doesn't use rapid speeds
                             speed = Units.Quantity(c.Parameters['F'], FreeCAD.Units.Velocity)
@@ -449,7 +462,7 @@ def parse(pathobj):
                         outstring.append(f"{param}{int(c.Parameters['D'])}")
                     elif param == 'S':
                         outstring.append(f"{param}{int(c.Parameters['S'])}")
-                    else: # coordinates & other parameters
+                    else: # Coordinates & other parameters
                         if param == 'Z' and TLC: # add G43 Hxx to first Z move
                           # The post from pyDNC added the G43 HXX to the first Z move which resulted in an unintended overtravel of Z.
                           # If there's a pending fixture offset, insert a G0 line with it before the G43 line

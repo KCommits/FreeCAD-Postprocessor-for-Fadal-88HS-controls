@@ -1,5 +1,5 @@
 # FreeCAD-Postprocessor-for-Fadal-88HS-controls
-This is a FreeCAD CAM Postprocessor for Fadal 88HS controls, it assumes Format 2 is in effect. This is an update to the fadal post on the pyDNC website, which seemed to have quite a few errors. 
+This is a FreeCAD CAM Postprocessor for Fadal 88HS controls, it assumes Format 2 is in effect. This is an update to the Fadal post on the pyDNC website, which seemed to have quite a few errors. 
 
 This post is still a work in progress, but had made basic pockets and 2D milling work. Test carefully.
 
@@ -20,8 +20,8 @@ This post is still a work in progress, but had made basic pockets and 2D milling
 - [ ] 2D Contour
 - [ ] 2D Pocket
 - [ ] Drilling (G81)
-- [ ] Peck Drilling (G83)
-- [ ] Tapping (G84)
+- [X] Peck Drilling (G83)
+- [ ] Rigid Tapping (G84)
 - [ ] Fixture Offsets
 - [ ] Face Milling
 - [X] Helix
