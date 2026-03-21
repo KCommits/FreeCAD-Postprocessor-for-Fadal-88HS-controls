@@ -27,6 +27,9 @@
 # *                                                                         *
 # ***************************************************************************
 from __future__ import print_function
+
+from distutils.command.build_scripts import first_line_re
+
 import FreeCAD
 from FreeCAD import Units
 import Path
@@ -195,7 +198,7 @@ def processArguments(argstring):
     return True
 
 
-def export(objectslist, filename, argstring):
+def export(objects_list, filename, argstring):
     print("fadal_post.export() Started")
     if not processArguments(argstring):
         return None
@@ -208,7 +211,7 @@ def export(objectslist, filename, argstring):
     global OUTPUT_HEADER
     global MIST
 
-    for obj in objectslist:
+    for obj in objects_list:
         if not hasattr(obj, "Path"):
             print("the object " + obj.Name + " is not a path. Please select only path and Compounds.")
             return None
@@ -227,20 +230,20 @@ def export(objectslist, filename, argstring):
     print(f"Write the header.")
     if OUTPUT_HEADER:
         # gcode += f"{os.path.split(filename)[-1]}\n"
-        gcode += f"{linenumber()}(Post Processor: {__name__.upper()})\n"
-        gcode += f"{linenumber()}(Process time: {str(now).upper()})\n"
+        gcode += f"{line_number()}(Post Processor: {__name__.upper()})\n"
+        gcode += f"{line_number()}(Process time: {str(now).upper()})\n"
 
     print(f"Write the preamble.")
     if OUTPUT_COMMENTS:
-        gcode += f"{linenumber()}(Begin Preamble)\n"
+        gcode += f"{line_number()}(Begin Preamble)\n"
     for line in PREAMBLE.splitlines(False):
-        gcode += f"{linenumber()}{line}\n"
+        gcode += f"{line_number()}{line}\n"
 
     # Add units G-code
-    gcode += f"{linenumber()}{UNITS}\n"
+    gcode += f"{line_number()}{UNITS}\n"
 
     print(f"Iterating over the objectslist.")
-    for obj in objectslist:
+    for obj in objects_list:
 
         # Skip inactive operations
         if hasattr(obj, 'Active'):
@@ -252,54 +255,54 @@ def export(objectslist, filename, argstring):
 
         # Add pre-op comments
         if OUTPUT_COMMENTS:
-            gcode += f"{linenumber()}(BEGIN OPERATION: {obj.Label.upper()})\n"
-            # gcode += f"{linenumber()}(MACHINE UNITS: {UNIT_SPEED_FORMAT.upper()})\n"
+            gcode += f"{line_number()}(BEGIN OPERATION: {obj.Label.upper()})\n"
+            # gcode += f"{line_number()}(MACHINE UNITS: {UNIT_SPEED_FORMAT.upper()})\n"
         for line in PRE_OPERATION.splitlines(True):
-            gcode += f"{linenumber()}{line}"
+            gcode += f"{line_number()}{line}"
 
         # Get coolant mode
-        coolantMode = 'None'
+        coolant_mode = 'None'
         if hasattr(obj, "CoolantMode") or hasattr(obj, 'Base') and  hasattr(obj.Base, "CoolantMode"):
             if hasattr(obj, "CoolantMode"):
-                coolantMode = obj.CoolantMode
+                coolant_mode = obj.CoolantMode
             else:
-                coolantMode = obj.Base.CoolantMode
+                coolant_mode = obj.Base.CoolantMode
 
         # Turn coolant on if required
         if OUTPUT_COMMENTS:
-            if not coolantMode == 'None':
-                gcode += f"{linenumber()}(COOLANT ON:{coolantMode.upper()})\n"
-        if coolantMode == 'Flood':
-            gcode += f"{linenumber()}M8\n"
-        if coolantMode == 'Mist':
+            if not coolant_mode == 'None':
+                gcode += f"{line_number()}(COOLANT ON:{coolant_mode.upper()})\n"
+        if coolant_mode == 'Flood':
+            gcode += f"{line_number()}M8\n"
+        if coolant_mode == 'Mist':
             # This mill uses the air brake for mist coolant!
-            gcode += f"{linenumber()}M60\n"
+            gcode += f"{line_number()}M60\n"
             
         # Process the operation gcode
         gcode += parse(obj)
 
         # Do the post_op
         if OUTPUT_COMMENTS:
-            gcode += f"{linenumber()}(FINISH OPERATION: {obj.Label.upper()})\n"
+            gcode += f"{line_number()}(FINISH OPERATION: {obj.Label.upper()})\n"
         for line in POST_OPERATION.splitlines(True):
-            gcode += f"{linenumber()}{line}"
+            gcode += f"{line_number()}{line}"
 
         # Turn coolant off if required
-        if not coolantMode == 'None':
+        if not coolant_mode == 'None':
             if OUTPUT_COMMENTS:
-                gcode += f"{linenumber()}(COOLANT OFF: {coolantMode.upper()})\n"
-            gcode += f"{linenumber()}M9\n"
-            if coolantMode == 'Flood':
-                gcode += f"{linenumber()}M9\n"
-            if coolantMode == 'Mist':
+                gcode += f"{line_number()}(COOLANT OFF: {coolant_mode.upper()})\n"
+            gcode += f"{line_number()}M9\n"
+            if coolant_mode == 'Flood':
+                gcode += f"{line_number()}M9\n"
+            if coolant_mode == 'Mist':
                 # This mill uses the air brake for mist coolant!
-                gcode += f"{linenumber()}M61\n"
+                gcode += f"{line_number()}M61\n"
 
     # Do the postamble
     if OUTPUT_COMMENTS:
         gcode += f"(BEGIN POSTAMBLE)\n"
     for line in POSTAMBLE.splitlines(True):
-        gcode += f"{linenumber()}{line}"
+        gcode += f"{line_number()}{line}"
     gcode += "%\n"
 
     if FreeCAD.GuiUp and SHOW_EDITOR:
@@ -323,7 +326,7 @@ def export(objectslist, filename, argstring):
     return final
 
 
-def linenumber():
+def line_number():
     # pylint: disable=global-statement
     global LINENR
     if OUTPUT_LINE_NUMBERS is True:
@@ -343,60 +346,61 @@ def parse(pathobj):
     global CURRENT_TOOL
     global PENDING_FIXTURE_OFFSET
 
-    out = ""
-    lastcommand = None
+    gcode_output_line_str = ""
+    last_command = None
     precision_string = f".{PRECISION}f"
-    currLocation = {}  # keep track for no doubles
+    curr_location = {}  # keep track for no doubles
     print(f"parse() startup! TLC is: {TLC}")
     # print(f"str of pathobj is {pathobj}")
 
     # The order of parameters
     params = ['X', 'Y', 'Z', 'A', 'B', 'C', 'I', 'J', 'K', 'F', 'S', 'T', 'Q', 'R', 'L', 'H', 'D', 'P']
-    firstmove = Path.Command("G0", {"X": -1, "Y": -1, "Z": -1, "F": 0.0})
-    currLocation.update(firstmove.Parameters)  # set First location Parameters
+    first_move = Path.Command("G0", {"X": -1, "Y": -1, "Z": -1, "F": 0.0})
+    curr_location.update(first_move.Parameters)  # set First location Parameters
 
     if hasattr(pathobj, "Group"):  # We have a compound or project.
         # if OUTPUT_COMMENTS:
-        #     out += f"{linenumber()}(compound: {pathobj.Label})\n"
+        #     gcode_output_line_str += f"{line_number()}(compound: {pathobj.Label})\n"
         for p in pathobj.Group:
-            out += parse(p)
-        return out
+            gcode_output_line_str += parse(p)
+        return gcode_output_line_str
     else:  # parsing simple path
         # groups might contain non-path things like stock.
         if not hasattr(pathobj, "Path"):
-            return out
+            return gcode_output_line_str
 
         # if OUTPUT_COMMENTS:
-        #     out += f"{linenumber()}({pathobj.Label})\n"
+        #     gcode_output_line_str += f"{line_number()}({pathobj.Label})\n"
 
         for index, c in enumerate(pathobj.Path.Commands):
-            outstring = []
+            gcode_word_list = []
             command = c.Name
             if index + 1 == len(pathobj.Path.Commands):
-              nextcommand = ""
+              next_command = ""
             else:
-              nextcommand = pathobj.Path.Commands[index+1].Name
+              next_command = pathobj.Path.Commands[index+1].Name
 
-            # adaptiveOp not defined in pyDNC version, adding below definitions similar to fanuc post
-            adaptiveOp = False
-            opHorizRapid = 0
-            opVertRapid = 0
+            # adaptive_op not defined in pyDNC version, adding below definitions similar to fanuc post
+            adaptive_op = False
+            op_horiz_rapid = 0
+            op_vert_rapid = 0
 
-            if adaptiveOp and c.Name in ["G0", "G00"]:
-                if opHorizRapid and opVertRapid:
+            if adaptive_op and c.Name in ["G0", "G00"]:
+                if op_horiz_rapid and op_vert_rapid:
                     command = 'G1'
                 else:
-                    outstring.append('(TOOL CONTROLLER RAPID VALUES ARE UNSET)\n')
+                    gcode_word_list.append('(TOOL CONTROLLER RAPID VALUES ARE UNSET)\n')
 
-            # Suppress moves in fixture selection
+            # Handle the "Fixture" operation, which outputs the fixture offset (e.g. E1/G54)
             if pathobj.Label == "Fixture":
+                # Suppress moves in fixture selection
                 if command == "G0":
                     continue
                 # Capture fixture offset commands (e.g., E1, G54, G55, etc.) and store for later
                 if command not in ["G0", "G00"] and not command.startswith("("):
                     PENDING_FIXTURE_OFFSET = command
                     # Skip outputting the fixture offset here; it will be added after tool change
-                    lastcommand = command
+                    last_command = command
                     continue
 
             # TODO: Drill cycles do not work with pyDNC version of this post and FreeCAD v1.0.2, the attribs checked
@@ -414,27 +418,27 @@ def parse(pathobj):
                     is_tap = "tap" in tool.BitShape.lower()
             # Do the conversion for tapping if needed.
             if (command == "G81" or command == "G83") and is_tap:
-                outstring.append("G84 G99")
+                gcode_word_list.append("G84 G99")
                 # append additional parameters for tapping
                 if "R" in c.Parameters:
-                    outstring.append(f"R0{Units.Quantity(c.Parameters['R'], FreeCAD.Units.Length)}")
+                    gcode_word_list.append(f"R0{Units.Quantity(c.Parameters['R'], FreeCAD.Units.Length)}")
                 else:
-                    outstring.append(f"R0{Units.Quantity(currLocation['Z'], FreeCAD.Units.Length)}")
+                    gcode_word_list.append(f"R0{Units.Quantity(curr_location['Z'], FreeCAD.Units.Length)}")
                     # c.Parameters.del("R")
                 if "S" in c.Parameters:
-                    outstring.append(f"F{int(c.Parameters['S'])}")
+                    gcode_word_list.append(f"F{int(c.Parameters['S'])}")
                     # c.Parameters.del("S")
-            else: # otherwise add command to output
-                outstring.append(command)
-            ### End sketchy untested tapping code ###
+            else: # Otherwise, add command to output
+                gcode_word_list.append(command)
+            ### End untested tapping code ###
 
             # if modal: suppress the command if it is the same as the last one
             if MODAL is True:
-                if command == lastcommand:
-                    outstring.pop(0)
+                if command == last_command:
+                    gcode_word_list.pop(0)
 
             # suppress a G80 between two identical command
-            if command == "G80" and lastcommand == nextcommand:
+            if command == "G80" and last_command == next_command:
                 continue
 
             if command[0] == '(' and not OUTPUT_COMMENTS: # command is a comment
@@ -444,68 +448,68 @@ def parse(pathobj):
             for param in params:
                 if param in c.Parameters:
                     # print(f"Current param in c.Parameters: {param}")
-                    if param == 'F' and (currLocation[param] != c.Parameters[param] or OUTPUT_DOUBLES):
+                    if param == 'F' and (curr_location[param] != c.Parameters[param] or OUTPUT_DOUBLES):
                         if command not in ["G0", "G00"]:  # fadal doesn't use rapid speeds
                             speed = Units.Quantity(c.Parameters['F'], FreeCAD.Units.Velocity)
                             if speed.getValueAs(UNIT_SPEED_FORMAT) > 0.0:
-                                outstring.append(
+                                gcode_word_list.append(
                                     f"{param}{float(speed.getValueAs(UNIT_SPEED_FORMAT)):{precision_string}}")
                             else:
                                 continue
                     elif param == 'T':
-                        outstring.append(f"{param}{int(c.Parameters['T'])}")
+                        gcode_word_list.append(f"{param}{int(c.Parameters['T'])}")
                         CURRENT_TOOL = int(c.Parameters['T'])
                     elif param == 'H':
-                        outstring.append(f"{param}{int(c.Parameters['H'])}")
+                        gcode_word_list.append(f"{param}{int(c.Parameters['H'])}")
                     elif param == 'D':
-                        outstring.append(f"{param}{int(c.Parameters['D'])}")
+                        gcode_word_list.append(f"{param}{int(c.Parameters['D'])}")
                     elif param == 'S':
-                        outstring.append(f"{param}{int(c.Parameters['S'])}")
+                        gcode_word_list.append(f"{param}{int(c.Parameters['S'])}")
                     else: # Coordinates & other parameters
                         if param == 'Z' and TLC: # add G43 Hxx to first Z move
                           # The post from pyDNC added the G43 HXX to the first Z move which resulted in an unintended overtravel of Z.
                           # If there's a pending fixture offset, insert a G0 line with it before the G43 line
                           if PENDING_FIXTURE_OFFSET:
-                              out += f"{linenumber()}G0 {PENDING_FIXTURE_OFFSET}\n"
+                              gcode_output_line_str += f"{line_number()}G0 {PENDING_FIXTURE_OFFSET}\n"
                               PENDING_FIXTURE_OFFSET = ""
                           pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                          outstring.append(
+                          gcode_word_list.append(
                               f"G43 {param}{float(pos.getValueAs(UNIT_FORMAT)):{precision_string}} H{CURRENT_TOOL}")
                           TLC = False
-                        elif (not OUTPUT_DOUBLES) and (param in currLocation) and (currLocation[param] == c.Parameters[param]):
+                        elif (not OUTPUT_DOUBLES) and (param in curr_location) and (curr_location[param] == c.Parameters[param]):
                             continue
                         else:
                             pos = Units.Quantity(c.Parameters[param], FreeCAD.Units.Length)
-                            outstring.append(f"{param}{float(pos.getValueAs(UNIT_FORMAT)):{precision_string}}")
+                            gcode_word_list.append(f"{param}{float(pos.getValueAs(UNIT_FORMAT)):{precision_string}}")
 
             # store the latest command
-            lastcommand = command
-            currLocation.update(c.Parameters)
+            last_command = command
+            curr_location.update(c.Parameters)
 
             # Check for Tool Change:
             if command == 'M6':
                 # add tool change preamble
                 for line in TOOL_CHANGE.splitlines(True):
-                    out += linenumber() + line
+                    gcode_output_line_str += line_number() + line
                 # flag for adding height offset to next Z move
                 TLC = True
 
             if command == "message":
                 if OUTPUT_COMMENTS is False:
-                    out = []
+                    gcode_output_line_str = []
                 else:
-                    outstring.pop(0)  # remove the command
+                    gcode_word_list.pop(0)  # remove the command
 
-            # prepend a line number and append a newline
-            if len(outstring) >= 1:
+            # Prepend a line number and append a newline
+            if len(gcode_word_list) >= 1:
                 if OUTPUT_LINE_NUMBERS:
-                    outstring.insert(0, (linenumber()))
+                    gcode_word_list.insert(0, (line_number()))
 
                 # append the line to the final output
-                for word in outstring:
-                    out += word.upper() + COMMAND_SPACE
-                out = out.strip() + "\n"
+                for word in gcode_word_list:
+                    gcode_output_line_str += word.upper() + COMMAND_SPACE
+                gcode_output_line_str = gcode_output_line_str.strip() + "\n"
 
-        return out
+        return gcode_output_line_str
 
 # print(__name__ + " gcode postprocessor loaded.")
