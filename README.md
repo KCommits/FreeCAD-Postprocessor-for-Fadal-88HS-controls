@@ -1,7 +1,7 @@
 # FreeCAD-Postprocessor-for-Fadal-88HS-controls
-This is a FreeCAD CAM Postprocessor for Fadal 88HS controls, it assumes Format 2 is in effect. This is an update to the Fadal post on the pyDNC website, which seemed to have quite a few errors. 
+This is a FreeCAD CAM post processor for 3 axis mill Fadal 88HS controls, it assumes Format 2 is in effect. It is a rewrite of the Fadal post on the pyDNC website. 
 
-This post is still a work in progress, but had made basic pockets and 2D milling work. Test carefully.
+This post is still a work in progress, but has made basic pockets and 2D milling work. Test carefully.
 
 # Known Issues
  - On Linux, python will output LF line endings, but the Fadal seems to choke on them when loading via USB. Use EOL conversion in Notepad++ or similar tools to save the file with Windows style CRLF line endings. 
